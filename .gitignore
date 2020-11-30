@@ -37,3 +37,12 @@ vignettes/*.pdf
 
 # R Environment Variables
 .Renviron
+
+# Project file
+*.Rproj
+
+# Folders to ignore
+/Manuscript_gitignore/
+/Stuff_gitignore/
+/Working/Data/trackDataFormatted/
+/Working/Data/trackDataREADONLY/
