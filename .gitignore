@@ -40,12 +40,12 @@ vignettes/*.pdf
 
 # R project
 *.Rproj
+.Rproj.user
 
 # Manuscript files
 /Manuscript_gitignore/
 /Stuff_gitignore/
 
 # Large tracking data files
-/Working/Data/trackDataFormatted
+/Working/Data/trackDataFormatted/
 /Working/Data/trackDataREADONLY/
-.Rproj.user
