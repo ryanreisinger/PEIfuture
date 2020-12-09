@@ -52,9 +52,13 @@ xtractR <- function(this.climate.mod = "ACCESS1-0", these.tracks = tracks) {
   
   # Don't use mean summer and mean winter layers
   
-  hlpr <- function (varname = "sic") {
+  hlpr <- function (varname = "zosgrad") {
     print(varname)
     this.raster.name <- list.rasters.dyn[grep(varname, list.rasters.dyn)]
+    # Drop Ben's derived layers
+    this.raster.name <- this.raster.name[-(grep("_mean_", this.raster.name))]
+    this.raster.name <- this.raster.name[-(grep("_sd_", this.raster.name))]
+    
     if (length(this.raster.name) != 0) {
       this.raster <- stack(this.raster.name)
       # Extract all values
