@@ -27,6 +27,7 @@ spNamesSummer <- spNamesSummer[spNamesSummer != "GHA"]
 for (z in spNamesWinter) {
   this.species <- z
   print(z)
+  this.species.full <- sp_full_names[sp_full_names$abbreviated_name == this.species, ]$full_name
 
 # Raster for cropping
 rst.crop <- raster(res = 0.1, xmn = -10, xmx = 70, ymn = -75, ymx = -30, crs = "+proj=longlat +datum=WGS84")
@@ -221,7 +222,7 @@ par(mar = c(2, 2, 1.6, 3))
 
 plot(mean.diff,
      col = rev(ocean.balance(141)),
-     main = paste(this.species, "-", this.season, sep = " "),
+     main = this.species.full,
      font.main = 1,
      legend = F,
      breaks = seq(-0.7, 0.7, by = 0.01))
@@ -294,7 +295,7 @@ par(mar = c(7, 2, 1.6, 1))
 
 plot(sd.rast,
      col = parula(101),
-     main = paste(this.species, "-", this.season, sep = " "),
+     main = this.species.full,
      font.main = 1,
      legend = F,
      breaks = seq(0, 0.5, by = 0.005))
@@ -425,7 +426,7 @@ SOplot(mean.diff.p, col = rev(ocean.balance(141)),
                           cex = 0.8))
 
 # Title
-title(main = paste0(this.species, " - ", this.season),
+title(main = paste0(this.species.full, " - ", this.season),
       cex.main = 0.8,
       font.main = 1)
 

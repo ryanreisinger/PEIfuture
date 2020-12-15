@@ -40,6 +40,23 @@ spNames <- c("AFS",
 spNamesSummer <- spNames[-c(5,8)]
 spNamesWinter <- spNames[-c(3,14)]
 
+# species full names
+sp_full_names <- data.frame("abbreviated_name" = spNames,
+                            "full_name" = c("Antarctic fur sea",
+                                            "Sooty albatross",
+                                            "Grey-headed albatross",
+                                            "Indian yellow-nosed albatross",
+                                            "King penguin",
+                                            "Light-mantled albatross",
+                                            "Macaroni penguin",
+                                            "Northern giant petrel",
+                                            "Orca",
+                                            "Southern elephant seal",
+                                            "Subantarctic fur seal",
+                                            "Eastern rockhopper penguin",
+                                            "Wandering albatross",
+                                            "White-chinned petrel"))
+
 # Climate model names
 all.climate.mods <- c(
   "ACCESS1-0",
