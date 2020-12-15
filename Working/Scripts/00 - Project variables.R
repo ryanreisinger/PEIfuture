@@ -42,7 +42,7 @@ spNamesWinter <- spNames[-c(3,14)]
 
 # species full names
 sp_full_names <- data.frame("abbreviated_name" = spNames,
-                            "full_name" = c("Antarctic fur sea",
+                            "full_name" = c("Antarctic fur seal",
                                             "Sooty albatross",
                                             "Grey-headed albatross",
                                             "Indian yellow-nosed albatross",
