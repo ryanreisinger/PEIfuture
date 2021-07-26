@@ -1,12 +1,11 @@
 # Create grids of environmental covariates for prediction
 
-setwd("D:/PEIfuture/Working/")
+setwd("D:/PEIfuture/Working/") # Local
+setwd("/mnt/home/ryan/PEIfuture/Working") # Server
 
 library(raster)
 
-source("./Scripts/00 - Project variables.R")
-
-all.climate.mods <- all.climate.mods[2]
+source("./Scripts/00 - Project variables.R") # Local
 
 # -----------------------------
 # Define summer and winter months
@@ -25,13 +24,18 @@ xtractGrid <- function(this.climate.mod = "ACCESS1-0",
   R <- raster(ext = extent(c(-180, 180, -80, -30)), res = 0.5)
   
   # Get depth
-  dep <- raster("D:/RAATDfuture/Working/Data/StaticCovariates/depth.grd")
+  # dep <- raster("D:/RAATDfuture/Working/Data/StaticCovariates/depth.grd")
+  dep <- raster("/mnt/home/ryan/RAATD_01/RAATDfuture/Working/Data/StaticCovariates/depth.grd")
   
   # List all the files
   list.rasters.dyn <- c(
-    list.files("D:/RAATDfuture/Working/Data/ClimateProcessed/",
+    # list.files("D:/RAATDfuture/Working/Data/ClimateProcessedNew/",
+    #                              full.names = T, recursive = T),
+    #                     list.files("D:/RAATDfuture/Working/Data/ClimateDerivedNew/",
+    #                               full.names = T, recursive = T)
+    list.files("/mnt/home/ryan/RAATD_01/RAATDfuture/Working/Data/ClimateProcessedNew/",
                full.names = T, recursive = T),
-    list.files("D:/RAATDfuture/Working/Data/ClimateDerived/",
+    list.files("/mnt/home/ryan/RAATD_01/RAATDfuture/Working/Data/ClimateDerivedNew/",
                full.names = T, recursive = T)
   )
   
@@ -45,10 +49,18 @@ xtractGrid <- function(this.climate.mod = "ACCESS1-0",
   list.rasters.dyn <- list.rasters.dyn[grep(which.time, list.rasters.dyn)]
   
   
-  hlpr <- function (varname = "sic") {
+  hlpr <- function (varname = "zosgrad") {
     print(varname)
-    this.raster.name <- list.rasters.dyn[grep(varname, list.rasters.dyn)]
+    this.raster.name <- list.rasters.dyn[grep(paste0(varname, "_"), list.rasters.dyn)]
+    
+    # Drop Ben's derived layers
+    if (length(this.raster.name) > 1) {
+      this.raster.name <- this.raster.name[-(grep("_sd_", this.raster.name))]
+      this.raster.name <- this.raster.name[-(grep("_mean_", this.raster.name))]
+    }
+
     if (length(this.raster.name) != 0) {
+      
       this.raster <- stack(this.raster.name)
       
       if (which.season == "summer") {
@@ -73,11 +85,17 @@ xtractGrid <- function(this.climate.mod = "ACCESS1-0",
   # 2. Sea surface temperature
   SST <- hlpr(varname = "tos")
   
+  # 3. Wind
+  WIN <- hlpr(varname = "wind")
+  
   # 3. U wind
   WINu <- hlpr(varname = "uas")
   
   # 4. V wind
   WINv <- hlpr(varname = "vas")
+  
+  # 5. Current
+  CUR <- hlpr(varname = "curr")
   
   # 5. U current
   CURu <- hlpr(varname = "uo")
@@ -89,7 +107,7 @@ xtractGrid <- function(this.climate.mod = "ACCESS1-0",
   SSH <- hlpr(varname = "zos")
   
   # 7. Chlorophyll concentration
-  CHL <- hlpr(varname = "chl")
+  # CHL <- hlpr(varname = "chl")
   
   # 9. Sea surface height gradient
   SSHg <- hlpr(varname = "zosgrad")
@@ -98,13 +116,15 @@ xtractGrid <- function(this.climate.mod = "ACCESS1-0",
   SSTg <- hlpr(varname = "tosgrad")
   
   # 11. Eddy kinetic energy
-  EKE <- hlpr(varname = "eke")
+  # EKE <- hlpr(varname = "eke")
   
   # 12. Depth
   DEP <- resample(dep, R, method = "bilinear")
   
-  stk <- stack(ICE, SST, WINu, WINv, CURu, CURv, SSH, CHL, SSHg, SSTg, EKE, DEP)
-  names(stk) <- c("ICE", "SST", "WINu", "WINv", "CURu", "CURv", "SSH", "CHL", "SSHg", "SSTg", "EKE", "DEP")
+  # stk <- stack(ICE, SST, WINu, WINv, CURu, CURv, SSH, CHL, SSHg, SSTg, EKE, DEP)
+  # names(stk) <- c("ICE", "SST", "WINu", "WINv", "CURu", "CURv", "SSH", "CHL", "SSHg", "SSTg", "EKE", "DEP")
+  stk <- stack(ICE, SST, WIN, WINu, WINv, CUR, CURu, CURv, SSH, SSHg, SSTg, DEP)
+  names(stk) <- c("ICE", "SST", "WIN", "WINu", "WINv", "CUR", "CURu", "CURv", "SSH", "SSHg", "SSTg", "DEP")
   #return(stk)
   grd <- as.data.frame(rasterToPoints(stk))
   saveRDS(grd, paste0("./Data/predictionGrids/predGrid_",
@@ -123,12 +143,20 @@ lapply(all.climate.mods, xtractGrid,
            which.time = "historical")
 
 lapply(all.climate.mods, xtractGrid,
+       which.season = "summer",
+       which.time = "rcp45")
+
+lapply(all.climate.mods, xtractGrid,
            which.season = "summer",
            which.time = "rcp85")
 
 lapply(all.climate.mods, xtractGrid,
            which.season = "winter",
            which.time = "historical")
+
+lapply(all.climate.mods, xtractGrid,
+       which.season = "winter",
+       which.time = "rcp45")
 
 lapply(all.climate.mods, xtractGrid,
            which.season = "winter",

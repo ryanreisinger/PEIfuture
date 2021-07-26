@@ -2,7 +2,7 @@
 
 # Ryan R Reisinger
 
-# Last modified: 2019-01-09
+# Last modified: 2020-06
 
 library(foreach)
 library(parallel)
@@ -12,14 +12,15 @@ library(doParallel)
 library(gbm)
 library(mgcv)
 library(ranger)
-#library(earth)
+library(earth)
 library(caret)
 library(e1071)
 library(pROC)
 library(caretEnsemble)
 library(plyr)
 
-setwd("D:/PEIfuture/Working")
+# setwd("D:/PEIfuture/Working/") # Local
+setwd("/mnt/home/ryan/PEIfuture/Working/") # Server
 
 #-------------------------------------------------------------------
 
@@ -82,7 +83,9 @@ foldCaret <- function(dat, nm = 10) {
 }
 
 #Select season
-#DAT <- DAT[DAT$which.season == this.season, ]
+ssn <- readRDS("~/PEIfuture/Working/Data/other/ALL_seasons.rds")
+ssn <- ssn[ssn$which.season == this.season, ]
+DAT <- DAT[DAT$track_id %in% ssn$track_id, ]
 
 #Complete cases
 DAT <- DAT[complete.cases(DAT[ ,c(9:ncol(DAT))]), ]
@@ -96,29 +99,39 @@ DAT <- DAT[complete.cases(DAT[ ,c(9:ncol(DAT))]), ]
 
 #-------------------------------------------------------------------
 
+# Create a function to combine different summaries
+mySummary  <- function(data, lev = NULL, model = NULL){
+  a1 <- defaultSummary(data, lev, model)
+  b1 <- twoClassSummary(data, lev, model)
+  c1 <- prSummary(data, lev, model)
+  out <- c(a1, b1, c1)
+  out}
+
 #Create folds
 folds <- foldCaret(dat = DAT, nm = 10)
 
 #MODELS:
 
 #Train control
-tc <- trainControl(method = "cv",
-                   number = length(folds),
-                   search = "grid",
-                   classProbs = TRUE,
-                   allowParallel = TRUE,
-                   summaryFunction = twoClassSummary,
-                   sampling = "down",
-                   index = folds)
-
-# Train control with random cross-validation
 # tc <- trainControl(method = "cv",
-#                    number = 10,
+#                    number = length(folds),
 #                    search = "grid",
 #                    classProbs = TRUE,
 #                    allowParallel = TRUE,
-#                    summaryFunction = twoClassSummary,
-#                    sampling = "down")
+#                    # summaryFunction = twoClassSummary,
+#                    summaryFunction = mySummary,
+#                    sampling = "down",
+#                    index = folds)
+
+# Train control with random cross-validation
+tc <- trainControl(method = "cv",
+                   number = 10,
+                   search = "grid",
+                   classProbs = TRUE,
+                   allowParallel = TRUE,
+                   #summaryFunction = twoClassSummary,
+                   summaryFunction = mySummary,
+                   sampling = "down")
 
 # Search grids for each model type
 # 1. GBM/BRT
@@ -142,7 +155,7 @@ rfGrid <-  data.frame(mtry = c(3, 4, 5),
                       min.node.size = c(1))
 
 # 4. MARS
-#marsGrid <- data.frame(degree = c(1, 2, 3))
+marsGrid <- data.frame(degree = c(1, 2, 3))
 
 # 5. SVM with radial kernel
 svmGrid <- data.frame(C = c(0.25, 0.5, 1, 2, 4, 8, 16, 32))
@@ -170,7 +183,7 @@ MOD.gbm <- train(x = as.data.frame(DAT[ ,c(9:ncol(DAT))]),
                         tuneGrid = gbmGrid)
 
 
-saveRDS(MOD.gbm, paste0("./Data/ModelOutput/", this.species, "_", this.climate, "_gbm.RDS"))
+saveRDS(MOD.gbm, paste0("./Data/modelOutput/", this.species, "_", this.season, "_", this.climate, "_gbm.RDS"))
 MOD.gbm
 summary(MOD.gbm)
 
@@ -181,24 +194,30 @@ registerDoSEQ()
 
 # Diagnostics
 tmp <- MOD.gbm$results
+tmp <- tmp[order(tmp$ROC, decreasing = T),] # Arrange by ROC
+tmp <- tmp[1,] # Keep only the best score
 tmp$sp <- this.species
+tmp$season <- this.season
 tmp$climate <- this.climate
 tmp$method <- "gbm"
 
+
 write.csv(tmp,
-          paste0("./Data/modelOutputDiagnostics/", this.species, "_", this.climate, "_gbm.csv"),
+          paste0("./Data/modelOutputDiagnostics/", this.species, "_", this.season, "_", this.climate, "_gbm.csv"),
           row.names = F)
+
 rm(tmp)
 
 # Variable importance
 tmp <- varImp(MOD.gbm)$importance
 tmp$variable <- row.names(tmp)
 tmp$sp <- this.species
+tmp$season <- this.season
 tmp$climate <- this.climate
 tmp$method <- "gbm"
 
 write.csv(tmp,
-          paste0("./Data/modelOutputVarImp/", this.species, "_", this.climate, "_gbm.csv"),
+          paste0("./Data/modelOutputVarImp/", this.species, "_", this.season, "_", this.climate, "_gbm.csv"),
           row.names = F)
 rm(tmp)
 
@@ -218,7 +237,7 @@ system.time(
                           tuneGrid = gamGrid)
 )
 
-saveRDS(MOD.gam, paste0("./Data/ModelOutput/", this.species, "_", this.climate, "_gam.RDS"))
+saveRDS(MOD.gam, paste0("./Data/modelOutput/", this.species, "_", this.season, "_", this.climate, "_gam.RDS"))
 MOD.gam
 summary(MOD.gam)
 
@@ -229,12 +248,15 @@ registerDoSEQ()
 
 # Diagnostics
 tmp <- MOD.gam$results
+tmp <- tmp[order(tmp$ROC, decreasing = T),] # Arrange by ROC
+tmp <- tmp[1,] # Keep only the best score
 tmp$sp <- this.species
+tmp$season <- this.season
 tmp$climate <- this.climate
 tmp$method <- "gam"
 
 write.csv(tmp,
-          paste0("./Data/modelOutputDiagnostics/", this.species, "_", this.climate, "_gam.csv"),
+          paste0("./Data/modelOutputDiagnostics/", this.species, "_", this.season, "_", this.climate, "_gam.csv"),
           row.names = F)
 rm(tmp)
 
@@ -242,11 +264,12 @@ rm(tmp)
 tmp <- varImp(MOD.gam)$importance
 tmp$variable <- row.names(tmp)
 tmp$sp <- this.species
+tmp$season <- this.season
 tmp$climate <- this.climate
 tmp$method <- "gam"
 
 write.csv(tmp,
-          paste0("./Data/modelOutputVarImp/", this.species, "_", this.climate, "_gam.csv"),
+          paste0("./Data/modelOutputVarImp/", this.species, "_", this.season, "_", this.climate, "_gam.csv"),
           row.names = F)
 rm(tmp)
 
@@ -267,7 +290,7 @@ system.time(
                          tuneGrid = rfGrid)
 )
 
-saveRDS(MOD.rf, paste0("./Data/ModelOutput/", this.species, "_", this.climate, "_rf.RDS"))
+saveRDS(MOD.rf, paste0("./Data/modelOutput/", this.species, "_", this.season, "_", this.climate, "_rf.RDS"))
 MOD.rf
 summary(MOD.rf)
 
@@ -278,12 +301,15 @@ registerDoSEQ()
 
 # Diagnostics
 tmp <- MOD.rf$results
+tmp <- tmp[order(tmp$ROC, decreasing = T),] # Arrange by ROC
+tmp <- tmp[1,] # Keep only the best score
 tmp$sp <- this.species
+tmp$season <- this.season
 tmp$climate <- this.climate
 tmp$method <- "rf"
 
 write.csv(tmp,
-          paste0("./Data/modelOutputDiagnostics/", this.species, "_", this.climate, "_rf.csv"),
+          paste0("./Data/modelOutputDiagnostics/", this.species, "_", this.season, "_", this.climate, "_rf.csv"),
           row.names = F)
 rm(tmp)
 
@@ -291,11 +317,12 @@ rm(tmp)
 tmp <- varImp(MOD.rf)$importance
 tmp$variable <- row.names(tmp)
 tmp$sp <- this.species
+tmp$season <- this.season
 tmp$climate <- this.climate
 tmp$method <- "rf"
 
 write.csv(tmp,
-          paste0("./Data/modelOutputVarImp/", this.species, "_", this.climate, "_rf.csv"),
+          paste0("./Data/modelOutputVarImp/", this.species, "_", this.season, "_", this.climate, "_rf.csv"),
           row.names = F)
 rm(tmp)
 
@@ -303,49 +330,56 @@ rm(tmp)
 #MARS
 #-------------------
 
-# clust <- makeCluster(detectCores() - 1) # leave 1 core for OS
-# registerDoParallel(clust)
-# 
-# system.time(
-#   MOD.mars <- train(x = as.data.frame(DAT[ ,c(9:ncol(DAT))]),
-#                          y = DAT[ ,3],
-#                          method = "bagEarthGCV",
-#                          metric = "ROC",
-#                          trControl = tc,
-#                          tuneGrid = marsGrid)
-# )
-# 
-# saveRDS(MOD.mars, paste0("./Data/ModelOutput/", this.species, "_", this.climate, "_mars.RDS"))
-# MOD.mars
-# summary(MOD.mars)
-# 
-# stopCluster(clust)
-# registerDoSEQ()
-# 
-# # RESULTS
-# 
-# # Diagnostics
-# tmp <- MOD.mars$results
-# tmp$sp <- this.species
-# tmp$climate <- this.climate
-# tmp$method <- "mars"
-# 
-# write.csv(tmp,
-#           paste0("./Data/modelOutputDiagnostics/", this.species, "_", this.climate, "_mars.csv"),
-#           row.names = F)
-# rm(tmp)
-# 
-# # Variable importance
-# tmp <- varImp(MOD.mars)$importance
-# tmp$variable <- row.names(tmp)
-# tmp$sp <- this.species
-# tmp$climate <- this.climate
-# tmp$method <- "mars"
-# 
-# write.csv(tmp,
-#           paste0("./Data/modelOutputVarImp/", this.species, "_", this.climate, "_mars.csv"),
-#           row.names = F)
-# rm(tmp)
+if (FALSE) {
+clust <- makeCluster(detectCores() - 1) # leave 1 core for OS
+registerDoParallel(clust)
+
+system.time(
+  MOD.mars <- train(x = as.data.frame(DAT[ ,c(9:ncol(DAT))]),
+                         y = DAT[ ,3],
+                         method = "bagEarthGCV",
+                         metric = "ROC",
+                         trControl = tc,
+                         tuneGrid = marsGrid)
+)
+
+saveRDS(MOD.mars, paste0("./Data/modelOutput/", this.species, "_", this.season, "_", this.climate, "_mars.RDS"))
+MOD.mars
+summary(MOD.mars)
+
+stopCluster(clust)
+registerDoSEQ()
+
+# RESULTS
+
+# Diagnostics
+tmp <- MOD.mars$results
+tmp <- tmp[order(tmp$ROC, decreasing = T),] # Arrange by ROC
+tmp <- tmp[1,] # Keep only the best score
+tmp$sp <- this.species
+tmp$season <- this.season
+tmp$climate <- this.climate
+tmp$method <- "mars"
+
+write.csv(tmp,
+          paste0("./Data/modelOutputDiagnostics/", this.species, "_", this.season, "_", this.climate, "_mars.csv"),
+          row.names = F)
+rm(tmp)
+
+# Variable importance
+tmp <- varImp(MOD.mars)$importance
+tmp$variable <- row.names(tmp)
+tmp$sp <- this.species
+tmp$season <- this.season
+tmp$climate <- this.climate
+tmp$method <- "mars"
+
+write.csv(tmp,
+          paste0("./Data/modelOutputVarImp/", this.species, "_", this.season, "_", this.climate, "_mars.csv"),
+          row.names = F)
+rm(tmp)
+
+}
 
 #-------------------
 #SVM
@@ -363,7 +397,7 @@ system.time(
                           tuneGrid = svmGrid)
 )
 
-saveRDS(MOD.svm, paste0("./Data/ModelOutput/", this.species, "_", this.climate, "_svm.RDS"))
+saveRDS(MOD.svm, paste0("./Data/modelOutput/", this.species, "_", this.season, "_", this.climate, "_svm.RDS"))
 MOD.svm
 summary(MOD.svm)
 
@@ -374,12 +408,15 @@ registerDoSEQ()
 
 # Diagnostics
 tmp <- MOD.svm$results
+tmp <- tmp[order(tmp$ROC, decreasing = T),] # Arrange by ROC
+tmp <- tmp[1,] # Keep only the best score
 tmp$sp <- this.species
+tmp$season <- this.season
 tmp$climate <- this.climate
 tmp$method <- "svm"
 
 write.csv(tmp,
-          paste0("./Data/modelOutputDiagnostics/", this.species, "_", this.climate, "_svm.csv"),
+          paste0("./Data/modelOutputDiagnostics/", this.species, "_", this.season, "_", this.climate, "_svm.csv"),
           row.names = F)
 rm(tmp)
 
@@ -387,11 +424,12 @@ rm(tmp)
 tmp <- varImp(MOD.svm)$importance
 tmp$variable <- row.names(tmp)
 tmp$sp <- this.species
+tmp$season <- this.season
 tmp$climate <- this.climate
 tmp$method <- "svm"
 
 write.csv(tmp,
-          paste0("./Data/modelOutputVarImp/", this.species, "_", this.climate, "_svm.csv"),
+          paste0("./Data/modelOutputVarImp/", this.species, "_", this.season, "_", this.climate, "_svm.csv"),
           row.names = F)
 rm(tmp)
 
@@ -411,7 +449,7 @@ system.time(
                            tuneGrid = annGrid)
 )
 
-saveRDS(MOD.ann, paste0("./Data/ModelOutput/", this.species, "_", this.climate, "_ann.RDS"))
+saveRDS(MOD.ann, paste0("./Data/modelOutput/", this.species, "_", this.season, "_", this.climate, "_ann.RDS"))
 MOD.ann
 summary(MOD.ann)
 
@@ -422,12 +460,15 @@ registerDoSEQ()
 
 # Diagnostics
 tmp <- MOD.ann$results
+tmp <- tmp[order(tmp$ROC, decreasing = T),] # Arrange by ROC
+tmp <- tmp[1,] # Keep only the best score
 tmp$sp <- this.species
+tmp$season <- this.season
 tmp$climate <- this.climate
 tmp$method <- "ann"
 
 write.csv(tmp,
-          paste0("./Data/modelOutputDiagnostics/", this.species, "_", this.climate, "_ann.csv"),
+          paste0("./Data/modelOutputDiagnostics/", this.species, "_", this.season, "_", this.climate, "_ann.csv"),
           row.names = F)
 rm(tmp)
 
@@ -435,35 +476,49 @@ rm(tmp)
 tmp <- varImp(MOD.ann)$importance
 tmp$variable <- row.names(tmp)
 tmp$sp <- this.species
+tmp$season <- this.season
 tmp$climate <- this.climate
 tmp$method <- "ann"
 
 write.csv(tmp,
-          paste0("./Data/modelOutputVarImp/", this.species, "_", this.climate, "_ann.csv"),
+          paste0("./Data/modelOutputVarImp/", this.species, "_", this.season, "_", this.climate, "_ann.csv"),
           row.names = F)
 rm(tmp)
 
 #--------------------------------------------------------
 # Ensembles using caretEnsemble
 
+if (FALSE) {
+
 # If neccessary, load models to get best tuning params.
-MOD.gbm <- readRDS(paste0("./Data/ModelOutput/", this.species, "_", this.climate, "_gbm.RDS"))
-MOD.gam <- readRDS(paste0("./Data/ModelOutput/", this.species, "_", this.climate, "_gam.RDS"))
-MOD.rf <- readRDS(paste0("./Data/ModelOutput/", this.species, "_", this.climate, "_rf.RDS"))
-#MOD.mars <- readRDS(paste0("./Data/ModelOutput/", this.species, "_", this.climate, "_mars.RDS"))
-MOD.svm <- readRDS(paste0("./Data/ModelOutput/", this.species, "_", this.climate, "_svm.RDS"))
-MOD.ann <- readRDS(paste0("./Data/ModelOutput/", this.species, "_", this.climate, "_ann.RDS"))
+MOD.gbm <- readRDS(paste0("./Data/modelOutput/", this.species, "_", this.season, "_", this.climate, "_gbm.RDS"))
+MOD.gam <- readRDS(paste0("./Data/modelOutput/", this.species, "_", this.season, "_", this.climate, "_gam.RDS"))
+MOD.rf <- readRDS(paste0("./Data/modelOutput/", this.species, "_", this.season, "_", this.climate, "_rf.RDS"))
+#MOD.mars <- readRDS(paste0("./Data/modelOutput/", this.species, "_", this.season, "_", this.climate, "_mars.RDS"))
+MOD.svm <- readRDS(paste0("./Data/modelOutput/", this.species, "_", this.season, "_", this.climate, "_svm.RDS"))
+MOD.ann <- readRDS(paste0("./Data/modelOutput/", this.species, "_", this.season, "_", this.climate, "_ann.RDS"))
 
 
 #Train control
+
+# Stratified CV
+# tc <- trainControl(method = "cv",
+#                    number = length(folds),
+#                    search = "grid",
+#                    classProbs = TRUE,
+#                    allowParallel = TRUE,
+#                    summaryFunction = mySummary,
+#                    index = folds,
+#                    savePredictions = TRUE)
+# Or Random CV
 tc <- trainControl(method = "cv",
                    number = length(folds),
                    search = "grid",
                    classProbs = TRUE,
                    allowParallel = TRUE,
-                   summaryFunction = twoClassSummary,
-                   index = folds,
+                   summaryFunction = mySummary,
                    savePredictions = TRUE)
+
 
 
 #With tuning params spcecified - a model must be built for each param combination to be tried
@@ -520,11 +575,12 @@ summary(MOD.ensemble)
 # Diagnostics
 tmp <- MOD.ensemble$results
 tmp$sp <- this.species
+tmp$season <- this.season
 tmp$climate <- this.climate
 tmp$method <- "ensemble"
 
 write.csv(tmp,
-          paste0("./Data/modelOutputDiagnostics/", this.species, "_", this.climate, "_ensemble.csv"),
+          paste0("./Data/modelOutputDiagnostics/", this.species, "_", this.season, "_", this.climate, "_ensemble.csv"),
           row.names = F)
 rm(tmp)
 
@@ -532,11 +588,12 @@ rm(tmp)
 tmp <- varImp(MOD.ensemble)$importance
 tmp$variable <- row.names(tmp)
 tmp$sp <- this.species
+tmp$season <- this.season
 tmp$climate <- this.climate
 tmp$method <- "ensemble"
 
 write.csv(tmp,
-          paste0("./Data/modelOutputVarImp/", this.species, "_", this.climate, "_ensemble.csv"),
+          paste0("./Data/modelOutputVarImp/", this.species, "_", this.season, "_", this.climate, "_ensemble.csv"),
           row.names = F)
 rm(tmp)
 
@@ -545,16 +602,19 @@ cors <- as.data.frame(modelCor(resamples(model_list)))
 row.names(cors) <- NULL
 cors$method <- colnames(cors)
 cors$sp <- this.species
+cors$season <- this.season
 cors$climate <- this.climate
 write.csv(cors,
-          paste0("./Data/modelOutputEnsembleCor/correlations_", this.species, "_", this.climate, ".csv"),
+          paste0("./Data/modelOutputEnsembleCor/correlations_", this.species, "_", this.season, "_", this.climate, ".csv"),
           row.names = F)
 rm(cors)
 
 #Save
-saveRDS(MOD.ensemble, paste0("./Data/ModelOutput/", this.species, "_", this.climate, "_ensemble.RDS"))
-saveRDS(model_list, paste0("./Data/ModelOutput/", this.species, "_", this.climate, "_ensembleList.RDS"))
+saveRDS(MOD.ensemble, paste0("./Data/modelOutput/", this.species, "_", this.season, "_", this.climate, "_ensemble.RDS"))
+saveRDS(model_list, paste0("./Data/modelOutput/", this.species, "_", this.season, "_", this.climate, "_ensembleList.RDS"))
 
 
 stopCluster(clust)
 registerDoSEQ()
+
+}

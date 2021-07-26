@@ -79,11 +79,17 @@ xtractGrid <- function(this.climate.mod = "ACCESS1-0",
   # 2. Sea surface temperature
   SST <- hlpr(varname = "tos")
   
+  # 3. Wind
+  WIN <- hlpr(varname = "wind")
+  
   # 3. U wind
   WINu <- hlpr(varname = "uas")
   
   # 4. V wind
   WINv <- hlpr(varname = "vas")
+  
+  # 5. Current
+  CUR <- hlpr(varname = "curr")
   
   # 5. U current
   CURu <- hlpr(varname = "uo")
@@ -95,7 +101,7 @@ xtractGrid <- function(this.climate.mod = "ACCESS1-0",
   SSH <- hlpr(varname = "zos")
   
   # 7. Chlorophyll concentration
-  CHL <- hlpr(varname = "chl")
+  # CHL <- hlpr(varname = "chl")
   
   # 9. Sea surface height gradient
   SSHg <- hlpr(varname = "zosgrad")
@@ -104,13 +110,15 @@ xtractGrid <- function(this.climate.mod = "ACCESS1-0",
   SSTg <- hlpr(varname = "tosgrad")
   
   # 11. Eddy kinetic energy
-  EKE <- hlpr(varname = "eke")
+  # EKE <- hlpr(varname = "eke")
   
   # 12. Depth
   DEP <- resample(dep, R, method = "bilinear")
   
-  stk <- stack(ICE, SST, WINu, WINv, CURu, CURv, SSH, CHL, SSHg, SSTg, EKE, DEP)
-  names(stk) <- c("ICE", "SST", "WINu", "WINv", "CURu", "CURv", "SSH", "CHL", "SSHg", "SSTg", "EKE", "DEP")
+  # stk <- stack(ICE, SST, WINu, WINv, CURu, CURv, SSH, CHL, SSHg, SSTg, EKE, DEP)
+  # names(stk) <- c("ICE", "SST", "WINu", "WINv", "CURu", "CURv", "SSH", "CHL", "SSHg", "SSTg", "EKE", "DEP")
+  stk <- stack(ICE, SST, WINu, WINv, CURu, CURv, SSH, SSHg, SSTg, DEP)
+  names(stk) <- c("ICE", "SST", "WINu", "WINv", "CURu", "CURv", "SSH", "SSHg", "SSTg", "DEP")
   #return(stk)
   grd <- as.data.frame(rasterToPoints(stk))
   saveRDS(grd, paste0("./Data/predictionGrids/predGrid_",
@@ -129,12 +137,20 @@ lapply(all.climate.mods, xtractGrid,
            which.time = "historical")
 
 lapply(all.climate.mods, xtractGrid,
+       which.season = "summer",
+       which.time = "rcp45")
+
+lapply(all.climate.mods, xtractGrid,
            which.season = "summer",
            which.time = "rcp85")
 
 lapply(all.climate.mods, xtractGrid,
            which.season = "winter",
            which.time = "historical")
+
+lapply(all.climate.mods, xtractGrid,
+       which.season = "winter",
+       which.time = "rcp45")
 
 lapply(all.climate.mods, xtractGrid,
            which.season = "winter",
