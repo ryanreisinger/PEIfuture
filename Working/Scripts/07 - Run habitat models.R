@@ -20,13 +20,12 @@ library(caretEnsemble)
 library(plyr)
 
 # setwd("D:/PEIfuture/Working/") # Local
-# setwd("/mnt/home/ryan/PEIfuture/Working/") # Server
-setwd("W:/PROJECTS/reisinger_humpbacks/PEIfuture/Working") # Minke
+setwd("/mnt/home/ryan/PEIfuture/Working/") # Server
 
 #-------------------------------------------------------------------
 
 this.species <- "AFS"
-this.climate <- "BCC-CSM1.1"
+this.climate <- "ACCESS1-0"
 this.season <- "summer"
 
 #-------------------------------------------------------------------
@@ -84,7 +83,7 @@ foldCaret <- function(dat, nm = 10) {
 }
 
 #Select season
-ssn <- readRDS("./Data/other/ALL_seasons.rds")
+ssn <- readRDS("~/PEIfuture/Working/Data/other/ALL_seasons.rds")
 ssn <- ssn[ssn$which.season == this.season, ]
 DAT <- DAT[DAT$track_id %in% ssn$track_id, ]
 
