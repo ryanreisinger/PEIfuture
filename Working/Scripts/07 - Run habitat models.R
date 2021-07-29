@@ -25,9 +25,23 @@ setwd("/mnt/home/ryan/PEIfuture/Working/") # Server
 #-------------------------------------------------------------------
 
 this.species <- "AFS"
-this.climate <- "ACCESS1-0"
+# this.climate <- "ACCESS1-0"
 this.season <- "summer"
 
+these.climates <- c(
+  # "ACCESS1-0",
+  # "BCC-CSM1.1",
+  # "CanESM2",
+  # "CMCC-CM",
+  "EC-EARTH",
+  "GISS-E2-H-CC",
+  "MIROC-ESM",
+  "NorESM1-M")
+
+for (i in these.climates) {
+  this.climate <- i
+  print(i)
+  
 #-------------------------------------------------------------------
 
 # Prepare data
@@ -616,5 +630,7 @@ saveRDS(model_list, paste0("./Data/modelOutput/", this.species, "_", this.season
 
 stopCluster(clust)
 registerDoSEQ()
+
+}
 
 }
