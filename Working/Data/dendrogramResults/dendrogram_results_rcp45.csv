@@ -1,0 +1,17 @@
+"season","scenario","model","tangle_R","p"
+"summer","rcp45","ACCESS1-0",0.99,0
+"winter","rcp45","ACCESS1-0",0.65,0.004
+"summer","rcp45","BCC-CSM1.1",0.93,0.001
+"winter","rcp45","BCC-CSM1.1",0.93,0
+"summer","rcp45","CanESM2",0.99,0
+"winter","rcp45","CanESM2",0.61,0.003
+"summer","rcp45","CMCC-CM",0.98,0
+"winter","rcp45","CMCC-CM",0.67,0.005
+"summer","rcp45","EC-EARTH",0.93,0.001
+"winter","rcp45","EC-EARTH",0.93,0
+"summer","rcp45","GISS-E2-H-CC",0.99,0
+"winter","rcp45","GISS-E2-H-CC",0.9,0
+"summer","rcp45","MIROC-ESM",0.97,0
+"winter","rcp45","MIROC-ESM",0.6,0.005
+"summer","rcp45","NorESM1-M",0.99,0
+"winter","rcp45","NorESM1-M",1,0
