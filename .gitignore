@@ -49,3 +49,6 @@ vignettes/*.pdf
 # Large tracking data files
 /Working/Data/trackDataFormatted/
 /Working/Data/trackDataREADONLY/
+
+# Private data
+/Working/Data/privateData/
