@@ -1,0 +1,650 @@
+# Build habitat models
+
+# Ryan R Reisinger
+
+# Last modified: 2020-06
+
+library(foreach)
+library(parallel)
+library(doParallel)
+
+## Various machine learning models fit in caret
+library(gbm)
+library(mgcv)
+library(ranger)
+library(earth)
+library(caret)
+library(e1071)
+library(pROC)
+library(caretEnsemble)
+library(plyr)
+
+# setwd("D:/PEIfuture/Working/") # Local
+setwd("/mnt/home/ryan/PEIfuture/Working/") # Server
+
+#-------------------------------------------------------------------
+# Common variables
+source("./Scripts/00 - Project variables.R")
+
+for (j in spNamesWinter) {
+# this.species <- "DMS"
+  this.species <- j
+# this.climate <- "ACCESS1-0"
+this.season <- "winter"
+
+# Allow parrallel?
+allow_par <- TRUE
+
+these.climates <- c(
+  # "ACCESS1-0",
+  # "BCC-CSM1.1",
+  # "CanESM2",
+  # "CMCC-CM"
+  "EC-EARTH"
+  # "GISS-E2-H-CC",
+  # "MIROC-ESM"
+  # "NorESM1-M"
+  )
+
+for (i in these.climates) {
+  this.climate <- i
+  print(i)
+  
+#-------------------------------------------------------------------
+
+# Prepare data
+
+# Load data
+DAT <- readRDS(paste0("./Data/trackDataEnvar/", this.species, "_", this.climate, ".RDS"))
+
+
+# Create binonmial column
+# for caret, must be factor
+DAT[DAT$s == "observed track", "s"] <- "Obs"
+DAT[DAT$s == "simulated track", "s"] <- "Sim"
+DAT$s <- as.factor(DAT$s)
+
+#-------------------------------------------------------------------
+# Function to create folds for individual based CV
+
+foldCaret <- function(dat, nm = 10) {
+  
+  #--------------------------------------------------------
+  # Create a folds index to keep cells together during cross-validation
+  # The resulting list "folds" is passed to "index" in the "trainControl" function in caret
+  # Keeps individuals together during splitting data for cross validation
+  
+  use.long <- dat
+  nm <- nm
+  
+  if (length(unique(use.long$track_id)) < nm) {
+    nm <- length(unique(use.long$track_id))
+  }
+  
+  rws <- floor(length(unique(use.long$track_id))/nm) #number of cells to include in each fold
+  cells <- unique(use.long$track_id)
+  folds <- list()
+  for (i in 1:nm) {
+    samp <- sample(x = cells, size = rws)
+    l <- list()
+    for (j in 1:length(samp)) {
+      k <- which(use.long$track_id == samp[j])
+      l[j] <- list(k)
+    }
+    l <- unlist(l)
+    folds[i] <- list(l)
+    for (r in 1:length(samp)) {
+      cells <- cells[cells != samp[r]]
+    }
+  }
+  
+  names(folds) <- paste0("fold_", c(1:nm)) #train needs list to be named
+  
+  return(folds)
+  
+}
+
+#Select season
+ssn <- readRDS("~/PEIfuture/Working/Data/other/ALL_seasons.rds")
+ssn <- ssn[ssn$which.season == this.season, ]
+DAT <- DAT[DAT$track_id %in% ssn$track_id, ]
+
+#Complete cases
+DAT <- DAT[complete.cases(DAT[ ,c(9:ncol(DAT))]), ]
+
+# VAS missing from EC-EARTH
+if (this.climate == "EC-EARTH") {
+  DAT$WINv <- NULL
+}
+
+#-------------------------------------------------------------------
+# Set up parallel processing
+
+# clust <- makeCluster(detectCores() - 1) # leave 1 core for OS
+# registerDoParallel(clust)
+
+#-------------------------------------------------------------------
+
+# Create a function to combine different summaries
+mySummary  <- function(data, lev = NULL, model = NULL){
+  a1 <- defaultSummary(data, lev, model)
+  b1 <- twoClassSummary(data, lev, model)
+  c1 <- prSummary(data, lev, model)
+  out <- c(a1, b1, c1)
+  out}
+
+#Create folds
+folds <- foldCaret(dat = DAT, nm = 10)
+
+#MODELS:
+
+#Train control
+# tc <- trainControl(method = "cv",
+#                    number = length(folds),
+#                    search = "grid",
+#                    classProbs = TRUE,
+#                    allowParallel = allow_par,
+#                    # summaryFunction = twoClassSummary,
+#                    summaryFunction = mySummary,
+#                    sampling = "down",
+#                    index = folds)
+
+# Train control with random cross-validation
+tc <- trainControl(method = "cv",
+                   number = 10,
+                   search = "grid",
+                   classProbs = TRUE,
+                   allowParallel = allow_par,
+                   #summaryFunction = twoClassSummary,
+                   summaryFunction = mySummary,
+                   sampling = "down")
+
+# Search grids for each model type
+# 1. GBM/BRT
+gbmGrid <-  expand.grid(interaction.depth = c(1, 3, 5), 
+                        n.trees = (1:10)*1000, 
+                        shrinkage = c(0.1, 0.5, 0.01),
+                        n.minobsinnode = 20)
+
+# For a quick test
+# gbmGrid <-  expand.grid(interaction.depth = 1, 
+#                         n.trees = 5000, 
+#                         shrinkage = 0.5,
+#                         n.minobsinnode = 20)
+
+# 2. GAM
+gamGrid <- data.frame(method = "fREML", select = FALSE)
+
+# 3. RF
+rfGrid <-  data.frame(mtry = c(3, 4, 5),
+                      splitrule = "gini",
+                      min.node.size = c(1))
+
+# 4. MARS
+marsGrid <- data.frame(degree = c(1, 2, 3))
+
+# 5. SVM with radial kernel
+svmGrid <- data.frame(C = c(0.25, 0.5, 1, 2, 4, 8, 16, 32))
+
+# 6. ANN
+annGrid <- data.frame(size = c(2, 4, 6),
+                      decay = 0)
+
+
+#Fit the model
+#searching over a given grid
+
+#-------------------
+#GBM
+#-------------------
+
+# clust <- makeCluster(detectCores() - 1) # leave 1 core for OS
+# registerDoParallel(clust)
+# 
+# MOD.gbm <- train(x = as.data.frame(DAT[ ,c(9:ncol(DAT))]),
+#                         y = DAT[ ,3],
+#                         method = "gbm",
+#                         metric = "ROC",
+#                         trControl = tc,
+#                         tuneGrid = gbmGrid)
+# 
+# 
+# saveRDS(MOD.gbm, paste0("./Data/modelOutput/", this.species, "_", this.season, "_", this.climate, "_gbm.RDS"))
+# MOD.gbm
+# summary(MOD.gbm)
+# 
+# stopCluster(clust)
+# registerDoSEQ()
+# 
+# # RESULTS
+# 
+# # Diagnostics
+# tmp <- MOD.gbm$results
+# tmp <- tmp[order(tmp$ROC, decreasing = T),] # Arrange by ROC
+# tmp <- tmp[1,] # Keep only the best score
+# tmp$sp <- this.species
+# tmp$season <- this.season
+# tmp$climate <- this.climate
+# tmp$method <- "gbm"
+# 
+# 
+# write.csv(tmp,
+#           paste0("./Data/modelOutputDiagnostics/", this.species, "_", this.season, "_", this.climate, "_gbm.csv"),
+#           row.names = F)
+# 
+# rm(tmp)
+# 
+# # Variable importance
+# tmp <- varImp(MOD.gbm)$importance
+# tmp$variable <- row.names(tmp)
+# tmp$sp <- this.species
+# tmp$season <- this.season
+# tmp$climate <- this.climate
+# tmp$method <- "gbm"
+# 
+# write.csv(tmp,
+#           paste0("./Data/modelOutputVarImp/", this.species, "_", this.season, "_", this.climate, "_gbm.csv"),
+#           row.names = F)
+# rm(tmp)
+
+#-------------------
+#GAM
+#-------------------
+
+# clust <- makeCluster(detectCores() - 1) # leave 1 core for OS
+# registerDoParallel(clust)
+# 
+# system.time(
+#   MOD.gam <- train(x = as.data.frame(DAT[ ,c(9:ncol(DAT))]),
+#                           y = DAT[ ,3],
+#                           method = "bam",
+#                           metric = "ROC",
+#                           trControl = tc,
+#                           tuneGrid = gamGrid)
+# )
+# 
+# saveRDS(MOD.gam, paste0("./Data/modelOutput/", this.species, "_", this.season, "_", this.climate, "_gam.RDS"))
+# MOD.gam
+# summary(MOD.gam)
+# 
+# stopCluster(clust)
+# registerDoSEQ()
+# 
+# # RESULTS
+# 
+# # Diagnostics
+# tmp <- MOD.gam$results
+# tmp <- tmp[order(tmp$ROC, decreasing = T),] # Arrange by ROC
+# tmp <- tmp[1,] # Keep only the best score
+# tmp$sp <- this.species
+# tmp$season <- this.season
+# tmp$climate <- this.climate
+# tmp$method <- "gam"
+# 
+# write.csv(tmp,
+#           paste0("./Data/modelOutputDiagnostics/", this.species, "_", this.season, "_", this.climate, "_gam.csv"),
+#           row.names = F)
+# rm(tmp)
+# 
+# # Variable importance
+# tmp <- varImp(MOD.gam)$importance
+# tmp$variable <- row.names(tmp)
+# tmp$sp <- this.species
+# tmp$season <- this.season
+# tmp$climate <- this.climate
+# tmp$method <- "gam"
+# 
+# write.csv(tmp,
+#           paste0("./Data/modelOutputVarImp/", this.species, "_", this.season, "_", this.climate, "_gam.csv"),
+#           row.names = F)
+# rm(tmp)
+# 
+# #-------------------
+# #RF
+# #-------------------
+
+clust <- makeCluster(detectCores() - 1) # leave 1 core for OS
+registerDoParallel(clust)
+
+system.time(
+  MOD.rf <- train(x = as.data.frame(DAT[ ,c(9:ncol(DAT))]),
+                         y = DAT[ ,3],
+                         method = "ranger",
+                  importance = 'impurity',
+                         metric = "ROC",
+                         trControl = tc,
+                         tuneGrid = rfGrid)
+)
+
+saveRDS(MOD.rf, paste0("./Data/modelOutput/", this.species, "_", this.season, "_", this.climate, "_rf.RDS"))
+MOD.rf
+summary(MOD.rf)
+
+stopCluster(clust)
+registerDoSEQ()
+
+# RESULTS
+
+# Diagnostics
+tmp <- MOD.rf$results
+tmp <- tmp[order(tmp$ROC, decreasing = T),] # Arrange by ROC
+tmp <- tmp[1,] # Keep only the best score
+tmp$sp <- this.species
+tmp$season <- this.season
+tmp$climate <- this.climate
+tmp$method <- "rf"
+
+write.csv(tmp,
+          paste0("./Data/modelOutputDiagnostics/", this.species, "_", this.season, "_", this.climate, "_rf.csv"),
+          row.names = F)
+rm(tmp)
+
+# Variable importance
+tmp <- varImp(MOD.rf)$importance
+tmp$variable <- row.names(tmp)
+tmp$sp <- this.species
+tmp$season <- this.season
+tmp$climate <- this.climate
+tmp$method <- "rf"
+
+write.csv(tmp,
+          paste0("./Data/modelOutputVarImp/", this.species, "_", this.season, "_", this.climate, "_rf.csv"),
+          row.names = F)
+rm(tmp)
+# 
+# #-------------------
+# #MARS
+# #-------------------
+# 
+# if (FALSE) {
+# clust <- makeCluster(detectCores() - 1) # leave 1 core for OS
+# registerDoParallel(clust)
+# 
+# system.time(
+#   MOD.mars <- train(x = as.data.frame(DAT[ ,c(9:ncol(DAT))]),
+#                          y = DAT[ ,3],
+#                          method = "bagEarthGCV",
+#                          metric = "ROC",
+#                          trControl = tc,
+#                          tuneGrid = marsGrid)
+# )
+# 
+# saveRDS(MOD.mars, paste0("./Data/modelOutput/", this.species, "_", this.season, "_", this.climate, "_mars.RDS"))
+# MOD.mars
+# summary(MOD.mars)
+# 
+# stopCluster(clust)
+# registerDoSEQ()
+# 
+# # RESULTS
+# 
+# # Diagnostics
+# tmp <- MOD.mars$results
+# tmp <- tmp[order(tmp$ROC, decreasing = T),] # Arrange by ROC
+# tmp <- tmp[1,] # Keep only the best score
+# tmp$sp <- this.species
+# tmp$season <- this.season
+# tmp$climate <- this.climate
+# tmp$method <- "mars"
+# 
+# write.csv(tmp,
+#           paste0("./Data/modelOutputDiagnostics/", this.species, "_", this.season, "_", this.climate, "_mars.csv"),
+#           row.names = F)
+# rm(tmp)
+# 
+# # Variable importance
+# tmp <- varImp(MOD.mars)$importance
+# tmp$variable <- row.names(tmp)
+# tmp$sp <- this.species
+# tmp$season <- this.season
+# tmp$climate <- this.climate
+# tmp$method <- "mars"
+# 
+# write.csv(tmp,
+#           paste0("./Data/modelOutputVarImp/", this.species, "_", this.season, "_", this.climate, "_mars.csv"),
+#           row.names = F)
+# rm(tmp)
+# 
+# }
+
+#-------------------
+#SVM
+#-------------------
+
+# clust <- makeCluster(detectCores() - 1) # leave 1 core for OS
+# registerDoParallel(clust)
+# 
+# system.time(
+#   MOD.svm <- train(x = as.data.frame(DAT[ ,c(9:ncol(DAT))]),
+#                           y = DAT[ ,3],
+#                           method = "svmRadialCost",
+#                           metric = "ROC",
+#                           trControl = tc,
+#                           tuneGrid = svmGrid)
+# )
+# 
+# saveRDS(MOD.svm, paste0("./Data/modelOutput/", this.species, "_", this.season, "_", this.climate, "_svm.RDS"))
+# MOD.svm
+# summary(MOD.svm)
+# 
+# stopCluster(clust)
+# registerDoSEQ()
+# 
+# # RESULTS
+# 
+# # Diagnostics
+# tmp <- MOD.svm$results
+# tmp <- tmp[order(tmp$ROC, decreasing = T),] # Arrange by ROC
+# tmp <- tmp[1,] # Keep only the best score
+# tmp$sp <- this.species
+# tmp$season <- this.season
+# tmp$climate <- this.climate
+# tmp$method <- "svm"
+# 
+# write.csv(tmp,
+#           paste0("./Data/modelOutputDiagnostics/", this.species, "_", this.season, "_", this.climate, "_svm.csv"),
+#           row.names = F)
+# rm(tmp)
+# 
+# # Variable importance
+# tmp <- varImp(MOD.svm)$importance
+# tmp$variable <- row.names(tmp)
+# tmp$sp <- this.species
+# tmp$season <- this.season
+# tmp$climate <- this.climate
+# tmp$method <- "svm"
+# 
+# write.csv(tmp,
+#           paste0("./Data/modelOutputVarImp/", this.species, "_", this.season, "_", this.climate, "_svm.csv"),
+#           row.names = F)
+# rm(tmp)
+# 
+# #-------------------
+# #ANN
+# #-------------------
+# 
+# clust <- makeCluster(detectCores() - 1) # leave 1 core for OS
+# registerDoParallel(clust)
+# 
+# system.time(
+#   MOD.ann <- train(x = as.data.frame(DAT[ ,c(9:ncol(DAT))]),
+#                            y = DAT[ ,3],
+#                            method = "nnet",
+#                            metric = "ROC",
+#                            trControl = tc,
+#                            tuneGrid = annGrid)
+# )
+# 
+# saveRDS(MOD.ann, paste0("./Data/modelOutput/", this.species, "_", this.season, "_", this.climate, "_ann.RDS"))
+# MOD.ann
+# summary(MOD.ann)
+# 
+# stopCluster(clust)
+# registerDoSEQ()
+# 
+# # RESULTS
+# 
+# # Diagnostics
+# tmp <- MOD.ann$results
+# tmp <- tmp[order(tmp$ROC, decreasing = T),] # Arrange by ROC
+# tmp <- tmp[1,] # Keep only the best score
+# tmp$sp <- this.species
+# tmp$season <- this.season
+# tmp$climate <- this.climate
+# tmp$method <- "ann"
+# 
+# write.csv(tmp,
+#           paste0("./Data/modelOutputDiagnostics/", this.species, "_", this.season, "_", this.climate, "_ann.csv"),
+#           row.names = F)
+# rm(tmp)
+# 
+# # Variable importance
+# tmp <- varImp(MOD.ann)$importance
+# tmp$variable <- row.names(tmp)
+# tmp$sp <- this.species
+# tmp$season <- this.season
+# tmp$climate <- this.climate
+# tmp$method <- "ann"
+# 
+# write.csv(tmp,
+#           paste0("./Data/modelOutputVarImp/", this.species, "_", this.season, "_", this.climate, "_ann.csv"),
+#           row.names = F)
+# rm(tmp)
+
+#--------------------------------------------------------
+# Ensembles using caretEnsemble
+
+if (FALSE) {
+
+# If neccessary, load models to get best tuning params.
+MOD.gbm <- readRDS(paste0("./Data/modelOutput/", this.species, "_", this.season, "_", this.climate, "_gbm.RDS"))
+MOD.gam <- readRDS(paste0("./Data/modelOutput/", this.species, "_", this.season, "_", this.climate, "_gam.RDS"))
+MOD.rf <- readRDS(paste0("./Data/modelOutput/", this.species, "_", this.season, "_", this.climate, "_rf.RDS"))
+#MOD.mars <- readRDS(paste0("./Data/modelOutput/", this.species, "_", this.season, "_", this.climate, "_mars.RDS"))
+MOD.svm <- readRDS(paste0("./Data/modelOutput/", this.species, "_", this.season, "_", this.climate, "_svm.RDS"))
+MOD.ann <- readRDS(paste0("./Data/modelOutput/", this.species, "_", this.season, "_", this.climate, "_ann.RDS"))
+
+
+#Train control
+
+# Stratified CV
+# tc <- trainControl(method = "cv",
+#                    number = length(folds),
+#                    search = "grid",
+#                    classProbs = TRUE,
+#                    allowParallel = allow_par,
+#                    summaryFunction = mySummary,
+#                    index = folds,
+#                    savePredictions = TRUE)
+# Or Random CV
+tc <- trainControl(method = "cv",
+                   number = length(folds),
+                   search = "grid",
+                   classProbs = TRUE,
+                   allowParallel = TRUE,
+                   summaryFunction = mySummary,
+                   savePredictions = TRUE)
+
+
+
+#With tuning params spcecified - a model must be built for each param combination to be tried
+#Use tuning params from already-run models
+
+clust <- makeCluster(detectCores() - 1) # leave 1 core for OS
+registerDoParallel(clust)
+
+model_list <- caretList(
+  x = as.data.frame(DAT[ ,c(9:ncol(DAT))]),
+  y = DAT[ ,3],
+  trControl=tc,
+  metric="ROC",
+  continue_on_fail = FALSE,
+  tuneList=list(
+    gbm=caretModelSpec(method="gbm",
+                       tuneGrid=data.frame(interaction.depth=MOD.gbm$bestTune$interaction.depth,
+                                           n.trees=MOD.gbm$bestTune$n.trees,
+                                           shrinkage=MOD.gbm$bestTune$shrinkage,
+                                           n.minobsinnode=MOD.gbm$bestTune$n.minobsinnode)),
+    gam = caretModelSpec(method = "bam",
+                       tuneGrid = data.frame(method = "fREML", select=FALSE)),
+    rf = caretModelSpec(method = "ranger",
+                      tuneGrid = data.frame(mtry =MOD.rf$bestTune$mtry,
+                                            splitrule = "gini",
+                                            min.node.size = 1)),
+    # mars = caretModelSpec(method = "earth",
+    #                     tunegrid = data.frame(degree = MOD.mars$bestTune$degree)),
+    svm = caretModelSpec(method = "svmRadialCost",
+                       tuneGrid = data.frame(C = MOD.svm$bestTune$C)),
+    ann = caretModelSpec(method = "nnet",
+                         tuneGrid = data.frame(size = MOD.ann$bestTune$size,
+                                             decay = MOD.ann$bestTune$decay))
+  )
+)
+
+#Ensemble
+MOD.ensemble <- caretEnsemble(
+  model_list,
+  metric="ROC",
+  trControl=trainControl(method = "cv",
+                         number=10,
+                         summaryFunction=twoClassSummary,
+                         allowParallel = allow_par,
+                         savePredictions = TRUE,
+                         classProbs=TRUE
+  ))
+
+#Summary
+summary(MOD.ensemble)
+
+# RESULTS
+
+# Diagnostics
+tmp <- MOD.ensemble$results
+tmp$sp <- this.species
+tmp$season <- this.season
+tmp$climate <- this.climate
+tmp$method <- "ensemble"
+
+write.csv(tmp,
+          paste0("./Data/modelOutputDiagnostics/", this.species, "_", this.season, "_", this.climate, "_ensemble.csv"),
+          row.names = F)
+rm(tmp)
+
+# Variable importance
+tmp <- varImp(MOD.ensemble)$importance
+tmp$variable <- row.names(tmp)
+tmp$sp <- this.species
+tmp$season <- this.season
+tmp$climate <- this.climate
+tmp$method <- "ensemble"
+
+write.csv(tmp,
+          paste0("./Data/modelOutputVarImp/", this.species, "_", this.season, "_", this.climate, "_ensemble.csv"),
+          row.names = F)
+rm(tmp)
+
+#Check the correlations
+cors <- as.data.frame(modelCor(resamples(model_list)))
+row.names(cors) <- NULL
+cors$method <- colnames(cors)
+cors$sp <- this.species
+cors$season <- this.season
+cors$climate <- this.climate
+write.csv(cors,
+          paste0("./Data/modelOutputEnsembleCor/correlations_", this.species, "_", this.season, "_", this.climate, ".csv"),
+          row.names = F)
+rm(cors)
+
+#Save
+saveRDS(MOD.ensemble, paste0("./Data/modelOutput/", this.species, "_", this.season, "_", this.climate, "_ensemble.RDS"))
+saveRDS(model_list, paste0("./Data/modelOutput/", this.species, "_", this.season, "_", this.climate, "_ensembleList.RDS"))
+
+
+stopCluster(clust)
+registerDoSEQ()
+
+}
+
+}
+
+}
