@@ -71,11 +71,21 @@ group_by(dat, species, season, scenario) %>%
   print(., n = nrow(.))
 
 # Which shifts are northwards
-filter(dat, bearing > -90 & bearing < 90 & scenario == "rcp45")
+filter(dat, bearing > -90 & bearing < 90 & scenario == "rcp85") %>% 
+  arrange(., bearing)
+
 unique(filter(dat, bearing > -90 & bearing < 90 & scenario == "rcp45")$species)
 
 filter(dat, bearing > -90 & bearing < 90 & scenario == "rcp85")
 unique(filter(dat, bearing > -90 & bearing < 90 & scenario == "rcp45")$species)
+
+# Relative shifts
+ggplot(dat, aes(y = dist, x = bearing, colour = species)) + geom_point() +
+  coord_polar(start = 3.14159) +
+  scale_x_continuous(breaks = seq(-180, +180, 30), expand=c(0,0), lim=c(-180, +180)) +
+  scale_y_continuous(expand=c(0,0), lim=c(0, 800)) +
+  labs(x = "Relative bearing\nof shift (degrees)", y = "Distance of\nshift (km)") +
+  facet_grid(scenario ~ season) + theme_bw()
 
 #------------------------------------------
 # Map
