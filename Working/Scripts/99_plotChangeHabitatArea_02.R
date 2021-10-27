@@ -112,7 +112,7 @@ outer_hold <- rbind(outer_hold, big_hold)
 
 
 # Plot
-pdf("./Data/other/habitat_area_change.pdf", width = 8.5, height = 10, useDingbats = F)
+pdf("./Data/other/habitat_area_change.pdf", width = 7.5, height = 8.5, useDingbats = F)
 ggplot(data = outer_hold, aes(x = change, y = species, color = climate)) +
   geom_jitter(height = 0.3) +
   scale_y_discrete(labels = c("Antarctic fur seal (AFS)",

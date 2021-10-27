@@ -184,13 +184,13 @@ p1 <- ggplot(data = world) +
   theme(panel.grid = element_blank(),
         axis.text = element_text(colour = "black"))
 
-pdf("./Data/predictionOutput/geomean_shift.pdf", width = 7/0.6666666, height = 8/0.6666666, useDingbats = F)
+pdf("./Data/predictionOutput/geomean_shift.pdf", width = 6.61417/0.6666666, height = 8/0.6666666, useDingbats = F)
 plot(p1)
 dev.off()
 
-tiff("./Data/predictionOutput/geomean_shift.tiff", width = 7/0.6666666, height = 8/0.6666666,
+tiff("./Data/predictionOutput/geomean_shift.tiff", width = 6.61417/0.888888, height = 8.38583/0.888888,
      units = "in",
-     res = 300,
+     res = 800,
      compression = "lzw")
 plot(p1)
 dev.off()

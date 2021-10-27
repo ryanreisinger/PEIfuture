@@ -1,6 +1,7 @@
 # Plot model performance
 
 setwd("~/PEIfuture/Working")
+setwd("D:/PEIfuture/Working/")
 
 library(data.table)
 library(ggplot2)
@@ -14,7 +15,8 @@ dat <- data.frame()
 
 for (i in fls) {
   print(i)
-  d <- fread(i, select = c("sp",
+  d <- fread(i, fill = TRUE,
+             select = c("sp",
                              "season",
                              "climate",
                              "method",
@@ -36,8 +38,9 @@ for (i in fls) {
                              "PrecisionSD",
                              "RecallSD",
                              "FSD"))
-
+if (ncol(d) == 22) {
 dat <- rbind(dat, d)
+}
 
 }
 
@@ -263,3 +266,14 @@ sd(dat[dat$method == "svm", ]$ROC, na.rm = T)
 
 mean(dat[dat$method == "ann", ]$ROC, na.rm = T)
 sd(dat[dat$method == "ann", ]$ROC, na.rm = T)
+
+
+#------------------------------------
+# Compare algorithms across evaluation methods
+#------------------------------------
+dat_long <- melt(data = dat,
+                 id.vars = c("sp", "season", "climate", "method"),
+                 measure.vars = c("Accuracy", "Kappa", "ROC", "Sens", "Spec", "AUC", "Precision", "Recall", "F")
+)
+ggplot(data = dat_long, aes(x = value, y = method, color = method)) + geom_boxplot() +
+  facet_wrap(~variable, ncol = 1)
