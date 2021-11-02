@@ -1,6 +1,7 @@
 ## Plot distributions of habitat values in different jurisdictions for present and future predictions
 
 setwd("~/PEIfuture/Working")
+setwd("D:/PEIfuture/Working/")
 
 library(raster)
 library(sf)
@@ -237,7 +238,7 @@ tst_eez$where <- "EEZ"
 tst_mpa$where <- "MPA"
 tst <- bind_rows(tst_ccamlr, tst_eez, tst_mpa)
 
-pdf("./Data/predictionOutput/high_importance_coverage_change.pdf", width = 6/0.6666666, height = 7/0.6666666, useDingbats = F)
+pdf("./Data/predictionOutput/high_importance_coverage_change.pdf", width = 6.6/0.8888889, height = 6/0.8888889, useDingbats = F)
 p1 <- ggplot(data = dplyr::filter(tst, scenario == "rcp45"), aes(y = change/1000000, x = where, colour = where, fill = where)) +
   geom_boxplot(outlier.shape = NA, alpha = 0.3) +
   geom_sina(size = 0.6, alpha = 0.6) +
